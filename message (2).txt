@@ -1,0 +1,823 @@
+--[[
+    GOD MODE HUB - MOBILE EDITION v5.0
+    Interface Otimizada para Dispositivos Móveis
+    Controles Touch-Friendly | Performance Otimizada
+    
+    CONTROLES MOBILE:
+    - Botão flutuante para abrir menu
+    - Interface adaptativa para telas pequenas
+    - Botões grandes para toque preciso
+--]]
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local CoreGui = game:GetService("CoreGui")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- ====================================================================================================
+-- CONFIGURAÇÃO GLOBAL
+-- ====================================================================================================
+local GodMode = {
+    Combat = {
+        Aimbot = false,
+        AutoAimbot = false,
+        Active = false,
+        MagicBullet = false,
+        KillAura = false,
+        Smoothness = 0.15,
+        FOV = 150,
+        ShowFOV = true,
+        TargetPart = "Head",
+        TeamCheck = false,
+        WallCheck = false,
+        TouchActivated = false -- Ativação por toque
+    },
+    Visuals = {
+        Boxes = false,
+        CornerBoxes = false,
+        Skeletons = false,
+        Lines = false,
+        Names = false,
+        HealthBar = false,
+        Chams = false,
+        TeamCheck = false,
+        Color = Color3.fromRGB(0, 255, 150),
+        MaxDistance = 1000
+    },
+    Movement = {
+        Bhop = false,
+        InfJump = false,
+        Noclip = false
+    },
+    Exploit = {
+        TeleportKill = false,
+        KillDelay = 0.5
+    },
+    GunMod = {
+        FastFire = false,
+        InstantReload = false,
+        NoRecoil = false
+    },
+    Config = {
+        PhantomOverlay = false,
+        AccentColor = Color3.fromRGB(138, 43, 226),
+        MobileMode = true
+    }
+}
+
+-- ====================================================================================================
+-- UTILITÁRIOS DE DESENHO (Otimizado para Mobile)
+-- ====================================================================================================
+local FOVCircle = Drawing.new("Circle")
+FOVCircle.Thickness = 2
+FOVCircle.NumSides = 48 -- Reduzido para melhor performance
+FOVCircle.Radius = GodMode.Combat.FOV
+FOVCircle.Filled = false
+FOVCircle.Visible = GodMode.Combat.ShowFOV
+FOVCircle.Color = GodMode.Config.AccentColor
+
+local ESP_Data = {}
+
+local function RemoveESP(player)
+    if ESP_Data[player] then
+        local data = ESP_Data[player]
+        pcall(function()
+            data.Box:Remove()
+            data.Name:Remove()
+            data.Health:Remove()
+            data.HealthBg:Remove()
+            data.Line:Remove()
+            for _, corner in pairs(data.Corners) do corner:Remove() end
+            for _, line in pairs(data.Skeleton) do line:Remove() end
+            if data.Highlight then data.Highlight:Destroy() end
+        end)
+        ESP_Data[player] = nil
+    end
+end
+
+local function CreateESP(player)
+    RemoveESP(player)
+    local data = {
+        Box = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Health = Drawing.new("Line"),
+        HealthBg = Drawing.new("Line"),
+        Line = Drawing.new("Line"),
+        Corners = {},
+        Skeleton = {},
+        Highlight = nil
+    }
+    for i = 1, 8 do
+        local l = Drawing.new("Line")
+        l.Thickness = 2
+        l.Visible = false
+        table.insert(data.Corners, l)
+    end
+    for i = 1, 10 do -- Reduzido para performance
+        local l = Drawing.new("Line")
+        l.Thickness = 1.5
+        l.Visible = false
+        table.insert(data.Skeleton, l)
+    end
+    data.Box.Thickness = 2 -- Mais grosso para visibilidade mobile
+    data.Name.Size = 16 -- Texto maior
+    data.Name.Center = true
+    data.Name.Outline = true
+    data.Name.Font = 2
+    data.HealthBg.Thickness = 5
+    data.HealthBg.Color = Color3.new(0, 0, 0)
+    data.Health.Thickness = 3
+    data.Line.Thickness = 2
+    ESP_Data[player] = data
+end
+
+-- ====================================================================================================
+-- LÓGICA DE COMBATE
+-- ====================================================================================================
+
+local function GetBestTargetPart(character)
+    if not character then return nil end
+    return character:FindFirstChild(GodMode.Combat.TargetPart) or character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart")
+end
+
+local function IsVisible(targetPart)
+    if not GodMode.Combat.WallCheck then return true end
+    local character = LocalPlayer.Character
+    if not character then return false end
+    local raycastParams = RaycastParams.new()
+    raycastParams.FilterDescendantsInstances = {character, Camera}
+    raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local result = workspace:Raycast(Camera.CFrame.Position, (targetPart.Position - Camera.CFrame.Position).Unit * (targetPart.Position - Camera.CFrame.Position).Magnitude, raycastParams)
+    return not result or result.Instance:IsDescendantOf(targetPart.Parent)
+end
+
+local function GetClosestTarget(ignoreFOV)
+    local target = nil
+    local dist = math.huge
+    local center = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer and p.Character then
+            if GodMode.Combat.TeamCheck and p.Team == LocalPlayer.Team then continue end
+            local hum = p.Character:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            
+            local targetPart = GetBestTargetPart(p.Character)
+            if targetPart then
+                local pos, onScreen = Camera:WorldToViewportPoint(targetPart.Position)
+                local magToPlayer = (targetPart.Position - Camera.CFrame.Position).Magnitude
+                
+                if ignoreFOV then
+                    if magToPlayer < dist then
+                        if GodMode.Combat.MagicBullet or IsVisible(targetPart) then
+                            target = p
+                            dist = magToPlayer
+                        end
+                    end
+                elseif onScreen then
+                    local magToCenter = (Vector2.new(pos.X, pos.Y) - center).Magnitude
+                    if magToCenter <= GodMode.Combat.FOV and magToCenter < dist then
+                        if GodMode.Combat.MagicBullet or IsVisible(targetPart) then
+                            target = p
+                            dist = magToCenter
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return target
+end
+
+task.spawn(function()
+    while task.wait() do
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if GodMode.Combat.KillAura then
+            local target = GetClosestTarget(true)
+            if target and target.Character and tool then
+                local targetPart = GetBestTargetPart(target.Character)
+                if targetPart then
+                    tool:Activate()
+                    if GodMode.Combat.MagicBullet then
+                        local muzzle = tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Handle")
+                        if muzzle then muzzle.CFrame = CFrame.new(muzzle.Position, targetPart.Position) end
+                    end
+                end
+            end
+        end
+        if GodMode.Combat.Aimbot and GodMode.Combat.Active and not GodMode.Combat.KillAura then
+            local target = GetClosestTarget(false)
+            if target and target.Character then
+                local targetPart = GetBestTargetPart(target.Character)
+                if targetPart then
+                    Camera.CFrame = Camera.CFrame:Lerp(CFrame.new(Camera.CFrame.Position, targetPart.Position), GodMode.Combat.Smoothness)
+                    if GodMode.Combat.MagicBullet and tool then
+                        local muzzle = tool:FindFirstChild("Muzzle") or tool:FindFirstChild("Handle")
+                        if muzzle then muzzle.CFrame = CFrame.new(muzzle.Position, targetPart.Position) end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ====================================================================================================
+-- INTERFACE MOBILE OTIMIZADA
+-- ====================================================================================================
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "GodModeHubMobile"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = (RunService:IsStudio() and LocalPlayer:WaitForChild("PlayerGui") or CoreGui)
+
+-- Botão Flutuante para Abrir Menu (Mobile Friendly)
+local FloatingButton = Instance.new("TextButton")
+FloatingButton.Size = UDim2.new(0, 70, 0, 70)
+FloatingButton.Position = UDim2.new(1, -85, 0.5, -35)
+FloatingButton.BackgroundColor3 = GodMode.Config.AccentColor
+FloatingButton.Text = "🎮"
+FloatingButton.TextSize = 32
+FloatingButton.Font = Enum.Font.GothamBold
+FloatingButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+FloatingButton.Active = true
+FloatingButton.Draggable = true
+FloatingButton.Parent = ScreenGui
+
+local FloatCorner = Instance.new("UICorner", FloatingButton)
+FloatCorner.CornerRadius = UDim.new(1, 0)
+
+local FloatStroke = Instance.new("UIStroke", FloatingButton)
+FloatStroke.Color = Color3.fromRGB(255, 255, 255)
+FloatStroke.Thickness = 3
+
+-- Container Principal (Otimizado para Mobile - Tela Cheia)
+local MainContainer = Instance.new("Frame")
+MainContainer.Size = UDim2.new(0.95, 0, 0.85, 0)
+MainContainer.Position = UDim2.new(0.025, 0, 0.075, 0)
+MainContainer.BackgroundColor3 = Color3.fromRGB(15, 15, 20)
+MainContainer.BackgroundTransparency = 0.05
+MainContainer.BorderSizePixel = 0
+MainContainer.Visible = false
+MainContainer.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner", MainContainer)
+MainCorner.CornerRadius = UDim.new(0, 20)
+
+local MainStroke = Instance.new("UIStroke", MainContainer)
+MainStroke.Color = GodMode.Config.AccentColor
+MainStroke.Thickness = 3
+MainStroke.Transparency = 0.3
+
+-- Header Mobile
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 80)
+Header.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+Header.BorderSizePixel = 0
+Header.Parent = MainContainer
+
+local HeaderCorner = Instance.new("UICorner", Header)
+HeaderCorner.CornerRadius = UDim.new(0, 20)
+
+local HeaderGradient = Instance.new("UIGradient", Header)
+HeaderGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, GodMode.Config.AccentColor),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 28))
+})
+HeaderGradient.Rotation = 45
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -100, 0, 35)
+Title.Position = UDim2.new(0, 20, 0, 10)
+Title.BackgroundTransparency = 1
+Title.Text = "GOD MODE HUB"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 24
+Title.TextScaled = true
+Title.Parent = Header
+
+local Subtitle = Instance.new("TextLabel")
+Subtitle.Size = UDim2.new(1, -100, 0, 25)
+Subtitle.Position = UDim2.new(0, 20, 0, 50)
+Subtitle.BackgroundTransparency = 1
+Subtitle.Text = "Mobile Edition - Touch Optimized"
+Subtitle.TextColor3 = Color3.fromRGB(180, 180, 200)
+Subtitle.TextXAlignment = Enum.TextXAlignment.Left
+Subtitle.Font = Enum.Font.Gotham
+Subtitle.TextSize = 14
+Subtitle.Parent = Header
+
+local CloseButton = Instance.new("TextButton")
+CloseButton.Size = UDim2.new(0, 60, 0, 60)
+CloseButton.Position = UDim2.new(1, -70, 0, 10)
+CloseButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+CloseButton.Text = "✕"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.TextSize = 28
+CloseButton.Parent = Header
+Instance.new("UICorner", CloseButton).CornerRadius = UDim.new(0, 12)
+
+CloseButton.MouseButton1Click:Connect(function()
+    MainContainer.Visible = false
+end)
+
+FloatingButton.MouseButton1Click:Connect(function()
+    MainContainer.Visible = not MainContainer.Visible
+end)
+
+-- Tabs Navigation (Vertical para Mobile)
+local TabsContainer = Instance.new("ScrollingFrame")
+TabsContainer.Size = UDim2.new(0.28, 0, 1, -100)
+TabsContainer.Position = UDim2.new(0, 10, 0, 90)
+TabsContainer.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+TabsContainer.BorderSizePixel = 0
+TabsContainer.ScrollBarThickness = 8
+TabsContainer.ScrollBarImageColor3 = GodMode.Config.AccentColor
+TabsContainer.Parent = MainContainer
+Instance.new("UICorner", TabsContainer).CornerRadius = UDim.new(0, 12)
+
+local TabsList = Instance.new("UIListLayout", TabsContainer)
+TabsList.Padding = UDim.new(0, 12)
+TabsList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+
+local TabsPadding = Instance.new("UIPadding", TabsContainer)
+TabsPadding.PaddingTop = UDim.new(0, 10)
+TabsPadding.PaddingBottom = UDim.new(0, 10)
+
+-- Content Area (Maior para Mobile)
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Size = UDim2.new(0.68, 0, 1, -100)
+ContentFrame.Position = UDim2.new(0.3, 0, 0, 90)
+ContentFrame.BackgroundColor3 = Color3.fromRGB(18, 18, 25)
+ContentFrame.BorderSizePixel = 0
+ContentFrame.Parent = MainContainer
+Instance.new("UICorner", ContentFrame).CornerRadius = UDim.new(0, 12)
+
+local TabButtons = {}
+local TabPages = {}
+
+local function CreateTab(name, icon)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.9, 0, 0, 70) -- Botões maiores para toque
+    btn.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+    btn.Text = icon .. "\n" .. name
+    btn.TextColor3 = Color3.fromRGB(150, 150, 170)
+    btn.Font = Enum.Font.GothamSemibold
+    btn.TextSize = 16
+    btn.Parent = TabsContainer
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
+    
+    local page = Instance.new("ScrollingFrame")
+    page.Size = UDim2.new(1, -20, 1, -20)
+    page.Position = UDim2.new(0, 10, 0, 10)
+    page.BackgroundTransparency = 1
+    page.Visible = (#TabButtons == 0)
+    page.ScrollBarThickness = 8
+    page.ScrollBarImageColor3 = GodMode.Config.AccentColor
+    page.BorderSizePixel = 0
+    page.Parent = ContentFrame
+    
+    local layout = Instance.new("UIListLayout", page)
+    layout.Padding = UDim.new(0, 15)
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    
+    local padding = Instance.new("UIPadding", page)
+    padding.PaddingTop = UDim.new(0, 10)
+    padding.PaddingBottom = UDim.new(0, 10)
+    
+    table.insert(TabButtons, btn)
+    TabPages[name] = page
+    
+    btn.MouseButton1Click:Connect(function()
+        for _, p in pairs(TabPages) do p.Visible = false end
+        for _, b in pairs(TabButtons) do 
+            b.BackgroundColor3 = Color3.fromRGB(25, 25, 35)
+            b.TextColor3 = Color3.fromRGB(150, 150, 170)
+        end
+        page.Visible = true
+        btn.BackgroundColor3 = GodMode.Config.AccentColor
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    
+    if #TabButtons == 1 then 
+        btn.BackgroundColor3 = GodMode.Config.AccentColor
+        btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end
+end
+
+local function CreateSection(tab, title)
+    local section = Instance.new("Frame")
+    section.Size = UDim2.new(0.95, 0, 0, 40)
+    section.BackgroundTransparency = 1
+    section.Parent = TabPages[tab]
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "━━ " .. title .. " ━━"
+    label.TextColor3 = GodMode.Config.AccentColor
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = 16
+    label.Parent = section
+end
+
+local function AddToggle(tab, text, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(0.95, 0, 0, 65) -- Maior para mobile
+    container.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+    container.BorderSizePixel = 0
+    container.Parent = TabPages[tab]
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 12)
+    
+    local stroke = Instance.new("UIStroke", container)
+    stroke.Color = Color3.fromRGB(40, 40, 50)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.5
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -120, 1, 0)
+    label.Position = UDim2.new(0, 15, 0, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(220, 220, 240)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 15
+    label.TextWrapped = true
+    label.Parent = container
+    
+    local toggleBg = Instance.new("Frame")
+    toggleBg.Size = UDim2.new(0, 70, 0, 35) -- Toggle maior
+    toggleBg.Position = UDim2.new(1, -80, 0.5, -17.5)
+    toggleBg.BackgroundColor3 = default and GodMode.Config.AccentColor or Color3.fromRGB(40, 40, 50)
+    toggleBg.BorderSizePixel = 0
+    toggleBg.Parent = container
+    Instance.new("UICorner", toggleBg).CornerRadius = UDim.new(1, 0)
+    
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(0, 28, 0, 28)
+    circle.Position = default and UDim2.new(1, -31, 0.5, -14) or UDim2.new(0, 3, 0.5, -14)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    circle.BorderSizePixel = 0
+    circle.Parent = toggleBg
+    Instance.new("UICorner", circle).CornerRadius = UDim.new(1, 0)
+    
+    local enabled = default
+    
+    toggleBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            enabled = not enabled
+            TweenService:Create(circle, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
+                Position = enabled and UDim2.new(1, -31, 0.5, -14) or UDim2.new(0, 3, 0.5, -14)
+            }):Play()
+            TweenService:Create(toggleBg, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
+                BackgroundColor3 = enabled and GodMode.Config.AccentColor or Color3.fromRGB(40, 40, 50)
+            }):Play()
+            callback(enabled)
+        end
+    end)
+end
+
+local function AddSlider(tab, text, min, max, default, callback)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(0.95, 0, 0, 85)
+    container.BackgroundColor3 = Color3.fromRGB(22, 22, 30)
+    container.BorderSizePixel = 0
+    container.Parent = TabPages[tab]
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 12)
+    
+    local stroke = Instance.new("UIStroke", container)
+    stroke.Color = Color3.fromRGB(40, 40, 50)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.5
+    
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 30)
+    label.Position = UDim2.new(0, 15, 0, 10)
+    label.BackgroundTransparency = 1
+    label.Text = text .. ": " .. tostring(default)
+    label.TextColor3 = Color3.fromRGB(220, 220, 240)
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 15
+    label.Parent = container
+    
+    local sliderBg = Instance.new("Frame")
+    sliderBg.Size = UDim2.new(1, -30, 0, 10) -- Slider mais grosso
+    sliderBg.Position = UDim2.new(0, 15, 0, 60)
+    sliderBg.BackgroundColor3 = Color3.fromRGB(35, 35, 45)
+    sliderBg.BorderSizePixel = 0
+    sliderBg.Parent = container
+    Instance.new("UICorner", sliderBg).CornerRadius = UDim.new(1, 0)
+    
+    local sliderFill = Instance.new("Frame")
+    sliderFill.Size = UDim2.new((default - min) / (max - min), 0, 1, 0)
+    sliderFill.BackgroundColor3 = GodMode.Config.AccentColor
+    sliderFill.BorderSizePixel = 0
+    sliderFill.Parent = sliderBg
+    Instance.new("UICorner", sliderFill).CornerRadius = UDim.new(1, 0)
+    
+    local knob = Instance.new("Frame")
+    knob.Size = UDim2.new(0, 24, 0, 24) -- Knob maior para toque
+    knob.Position = UDim2.new(1, -12, 0.5, -12)
+    knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    knob.BorderSizePixel = 0
+    knob.Parent = sliderFill
+    Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
+    
+    local dragging = false
+    
+    local function update(input)
+        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        TweenService:Create(sliderFill, TweenInfo.new(0.1), {Size = UDim2.new(pos, 0, 1, 0)}):Play()
+        
+        local value = math.floor(min + (max - min) * pos)
+        if max <= 1 then value = tonumber(string.format("%.2f", min + (max - min) * pos)) end
+        label.Text = text .. ": " .. tostring(value)
+        callback(value)
+    end
+    
+    knob.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+        end
+    end)
+    
+    UserInputService.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+    
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input)
+        end
+    end)
+end
+
+local function AddButton(tab, text, callback)
+    local container = Instance.new("TextButton")
+    container.Size = UDim2.new(0.95, 0, 0, 60)
+    container.BackgroundColor3 = GodMode.Config.AccentColor
+    container.Text = text
+    container.TextColor3 = Color3.fromRGB(255, 255, 255)
+    container.Font = Enum.Font.GothamBold
+    container.TextSize = 16
+    container.Parent = TabPages[tab]
+    Instance.new("UICorner", container).CornerRadius = UDim.new(0, 12)
+    
+    local stroke = Instance.new("UIStroke", container)
+    stroke.Color = Color3.fromRGB(255, 255, 255)
+    stroke.Thickness = 2
+    stroke.Transparency = 0.7
+    
+    container.MouseButton1Click:Connect(function()
+        TweenService:Create(container, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(100, 30, 180)}):Play()
+        task.wait(0.1)
+        TweenService:Create(container, TweenInfo.new(0.1), {BackgroundColor3 = GodMode.Config.AccentColor}):Play()
+        callback()
+    end)
+end
+
+-- ====================================================================================================
+-- CRIAR ABAS E FUNCIONALIDADES
+-- ====================================================================================================
+
+-- ABA COMBAT
+CreateTab("Combat", "⚔️")
+CreateSection("Combat", "Aimbot")
+AddToggle("Combat", "Enable Aimbot", false, function(v) GodMode.Combat.Aimbot = v end)
+AddToggle("Combat", "Auto Lock (Touch)", false, function(v) GodMode.Combat.AutoAimbot = v end)
+AddToggle("Combat", "Show FOV", true, function(v) GodMode.Combat.ShowFOV = v FOVCircle.Visible = v end)
+AddSlider("Combat", "Smoothness", 0.01, 1, 0.15, function(v) GodMode.Combat.Smoothness = v end)
+AddSlider("Combat", "FOV Size", 50, 800, 150, function(v) GodMode.Combat.FOV = v end)
+
+CreateSection("Combat", "Features")
+AddToggle("Combat", "Magic Bullet", false, function(v) GodMode.Combat.MagicBullet = v end)
+AddToggle("Combat", "Kill Aura", false, function(v) GodMode.Combat.KillAura = v end)
+AddToggle("Combat", "Team Check", false, function(v) GodMode.Combat.TeamCheck = v end)
+AddToggle("Combat", "Wall Check", false, function(v) GodMode.Combat.WallCheck = v end)
+
+-- Botão de Ativação Touch para Aimbot
+AddButton("Combat", "🎯 ACTIVATE AIMBOT (HOLD)", function()
+    GodMode.Combat.Active = true
+    task.wait(0.1)
+end)
+
+-- ABA VISUALS
+CreateTab("Visuals", "👁️")
+CreateSection("Visuals", "ESP")
+AddToggle("Visuals", "Box ESP", false, function(v) GodMode.Visuals.Boxes = v end)
+AddToggle("Visuals", "Corner Boxes", false, function(v) GodMode.Visuals.CornerBoxes = v end)
+AddToggle("Visuals", "Tracers", false, function(v) GodMode.Visuals.Lines = v end)
+AddToggle("Visuals", "Names", false, function(v) GodMode.Visuals.Names = v end)
+AddToggle("Visuals", "Health Bar", false, function(v) GodMode.Visuals.HealthBar = v end)
+AddToggle("Visuals", "Chams", false, function(v) GodMode.Visuals.Chams = v end)
+AddToggle("Visuals", "Skeleton", false, function(v) GodMode.Visuals.Skeletons = v end)
+AddToggle("Visuals", "Team Check", false, function(v) GodMode.Visuals.TeamCheck = v end)
+AddSlider("Visuals", "Max Distance", 100, 2000, 1000, function(v) GodMode.Visuals.MaxDistance = v end)
+
+-- ABA MOVEMENT
+CreateTab("Move", "🏃")
+CreateSection("Move", "Movement")
+AddToggle("Move", "Bunny Hop", false, function(v) GodMode.Movement.Bhop = v end)
+AddToggle("Move", "Infinite Jump", false, function(v) GodMode.Movement.InfJump = v end)
+AddToggle("Move", "Noclip", false, function(v) GodMode.Movement.Noclip = v end)
+
+-- ABA GUN MOD
+CreateTab("Gun", "🔫")
+CreateSection("Gun", "Modifications")
+AddToggle("Gun", "Fast Fire", false, function(v) GodMode.GunMod.FastFire = v end)
+AddToggle("Gun", "Instant Reload", false, function(v) GodMode.GunMod.InstantReload = v end)
+AddToggle("Gun", "No Recoil", false, function(v) GodMode.GunMod.NoRecoil = v end)
+
+-- ABA EXPLOIT
+CreateTab("Exploit", "💀")
+CreateSection("Exploit", "Dangerous")
+AddToggle("Exploit", "Teleport Kill", false, function(v) GodMode.Exploit.TeleportKill = v end)
+AddSlider("Exploit", "Kill Delay", 0.1, 2, 0.5, function(v) GodMode.Exploit.KillDelay = v end)
+
+-- ====================================================================================================
+-- RENDERIZAÇÃO ESP
+-- ====================================================================================================
+
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Position = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+    FOVCircle.Radius = GodMode.Combat.FOV
+    FOVCircle.Color = GodMode.Config.AccentColor
+    FOVCircle.Visible = GodMode.Combat.ShowFOV
+
+    for player, data in pairs(ESP_Data) do
+        local char = player.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        local hum = char and char:FindFirstChildOfClass("Humanoid")
+        
+        local isAlly = (player.Team == LocalPlayer.Team)
+        local shouldShow = true
+        if GodMode.Visuals.TeamCheck and isAlly then shouldShow = false end
+
+        if shouldShow and char and hrp and hum and hum.Health > 0 then
+            local dist = (hrp.Position - Camera.CFrame.Position).Magnitude
+            if dist <= GodMode.Visuals.MaxDistance then
+                local pos, onScreen = Camera:WorldToViewportPoint(hrp.Position)
+                if onScreen then
+                    local size = (Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, 3, 0)).Y - Camera:WorldToViewportPoint(hrp.Position - Vector3.new(0, 3, 0)).Y)
+                    local w, h = size * 0.6, size
+                    local x, y = pos.X - w/2, pos.Y - h/2
+                    
+                    if GodMode.Visuals.Chams then
+                        if not data.Highlight then data.Highlight = Instance.new("Highlight") data.Highlight.Parent = char end
+                        data.Highlight.FillColor = GodMode.Visuals.Color
+                        data.Highlight.OutlineColor = Color3.new(1, 1, 1)
+                        data.Highlight.FillTransparency = 0.5
+                        data.Highlight.Enabled = true
+                    elseif data.Highlight then data.Highlight.Enabled = false end
+
+                    data.Box.Visible = GodMode.Visuals.Boxes
+                    data.Box.Size = Vector2.new(w, h); data.Box.Position = Vector2.new(x, y); data.Box.Color = GodMode.Visuals.Color
+                    
+                    if GodMode.Visuals.CornerBoxes then
+                        local l = h/4; local corners = data.Corners
+                        corners[1].Visible = true; corners[1].From = Vector2.new(x, y); corners[1].To = Vector2.new(x + l, y); corners[1].Color = GodMode.Visuals.Color
+                        corners[2].Visible = true; corners[2].From = Vector2.new(x, y); corners[2].To = Vector2.new(x, y + l); corners[2].Color = GodMode.Visuals.Color
+                        corners[3].Visible = true; corners[3].From = Vector2.new(x + w, y); corners[3].To = Vector2.new(x + w - l, y); corners[3].Color = GodMode.Visuals.Color
+                        corners[4].Visible = true; corners[4].From = Vector2.new(x + w, y); corners[4].To = Vector2.new(x + w, y + l); corners[4].Color = GodMode.Visuals.Color
+                        corners[5].Visible = true; corners[5].From = Vector2.new(x, y + h); corners[5].To = Vector2.new(x + l, y + h); corners[5].Color = GodMode.Visuals.Color
+                        corners[6].Visible = true; corners[6].From = Vector2.new(x, y + h); corners[6].To = Vector2.new(x, y + h - l); corners[6].Color = GodMode.Visuals.Color
+                        corners[7].Visible = true; corners[7].From = Vector2.new(x + w, y + h); corners[7].To = Vector2.new(x + w - l, y + h); corners[7].Color = GodMode.Visuals.Color
+                        corners[8].Visible = true; corners[8].From = Vector2.new(x + w, y + h); corners[8].To = Vector2.new(x + w, y + h - l); corners[8].Color = GodMode.Visuals.Color
+                    else for i=1,8 do data.Corners[i].Visible = false end end
+                    
+                    data.Name.Visible = GodMode.Visuals.Names
+                    data.Name.Text = string.format("%s\n[%dm]", player.Name, math.floor(dist))
+                    data.Name.Position = Vector2.new(pos.X, y - 35); data.Name.Color = Color3.new(1, 1, 1)
+                    
+                    if GodMode.Visuals.HealthBar then
+                        local healthPercent = hum.Health / hum.MaxHealth; local barHeight = h * healthPercent
+                        data.HealthBg.Visible = true; data.HealthBg.From = Vector2.new(x - 8, y + h); data.HealthBg.To = Vector2.new(x - 8, y)
+                        data.Health.Visible = true; data.Health.From = Vector2.new(x - 8, y + h); data.Health.To = Vector2.new(x - 8, y + h - barHeight)
+                        data.Health.Color = Color3.fromHSV(healthPercent * 0.3, 1, 1)
+                    else data.Health.Visible = false; data.HealthBg.Visible = false end
+                    
+                    data.Line.Visible = GodMode.Visuals.Lines
+                    data.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y); data.Line.To = Vector2.new(pos.X, pos.Y); data.Line.Color = GodMode.Visuals.Color
+                    
+                    if GodMode.Visuals.Skeletons then
+                        local bones = {{"Head", "UpperTorso"}, {"UpperTorso", "LowerTorso"}, {"UpperTorso", "LeftUpperArm"}, {"LeftUpperArm", "LeftLowerArm"}, {"UpperTorso", "RightUpperArm"}, {"RightUpperArm", "RightLowerArm"}, {"LowerTorso", "LeftUpperLeg"}, {"LeftUpperLeg", "LeftLowerLeg"}, {"LowerTorso", "RightUpperLeg"}, {"RightUpperLeg", "RightLowerLeg"}}
+                        for i, bone in ipairs(bones) do
+                            local p1, p2 = char:FindFirstChild(bone[1]), char:FindFirstChild(bone[2])
+                            if p1 and p2 and i <= 10 then
+                                local pos1 = Camera:WorldToViewportPoint(p1.Position); local pos2 = Camera:WorldToViewportPoint(p2.Position)
+                                data.Skeleton[i].From = Vector2.new(pos1.X, pos1.Y); data.Skeleton[i].To = Vector2.new(pos2.X, pos2.Y)
+                                data.Skeleton[i].Color = GodMode.Visuals.Color; data.Skeleton[i].Visible = true
+                            elseif i <= 10 then data.Skeleton[i].Visible = false end
+                        end
+                    else for _, line in pairs(data.Skeleton) do line.Visible = false end end
+                else
+                    for i=1,8 do data.Corners[i].Visible = false end
+                    for _, line in pairs(data.Skeleton) do line.Visible = false end
+                    data.Box.Visible = false; data.Name.Visible = false; data.Health.Visible = false; data.HealthBg.Visible = false; data.Line.Visible = false
+                end
+            else
+                for i=1,8 do data.Corners[i].Visible = false end
+                for _, line in pairs(data.Skeleton) do line.Visible = false end
+                data.Box.Visible = false; data.Name.Visible = false; data.Health.Visible = false; data.HealthBg.Visible = false; data.Line.Visible = false
+            end
+        else
+            for i=1,8 do data.Corners[i].Visible = false end
+            for _, line in pairs(data.Skeleton) do line.Visible = false end
+            data.Box.Visible = false; data.Name.Visible = false; data.Health.Visible = false; data.HealthBg.Visible = false; data.Line.Visible = false
+            if data.Highlight then data.Highlight.Enabled = false end
+        end
+    end
+end)
+
+-- ====================================================================================================
+-- GUN MOD LOOP
+-- ====================================================================================================
+task.spawn(function()
+    while task.wait(1) do
+        if GodMode.GunMod.FastFire or GodMode.GunMod.InstantReload or GodMode.GunMod.NoRecoil then
+            local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+            if tool then
+                for _, v in pairs(tool:GetDescendants()) do
+                    if v:IsA("NumberValue") or v:IsA("IntValue") then
+                        local name = v.Name:lower()
+                        if GodMode.GunMod.FastFire and (name:find("firerate") or name:find("delay") or name:find("cooldown")) then v.Value = 0.01 end
+                        if GodMode.GunMod.InstantReload and (name:find("reload") or name:find("reloadtime")) then v.Value = 0.01 end
+                        if GodMode.GunMod.NoRecoil and (name:find("recoil") or name:find("shake") or name:find("kick")) then v.Value = 0 end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ====================================================================================================
+-- TELEPORT KILL LOOP
+-- ====================================================================================================
+task.spawn(function()
+    while task.wait() do
+        if GodMode.Exploit.TeleportKill then
+            local target = GetClosestTarget(true)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                local myChar = LocalPlayer.Character
+                if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                    myChar.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+                    task.wait(GodMode.Exploit.KillDelay)
+                end
+            end
+        end
+    end
+end)
+
+-- ====================================================================================================
+-- GERENCIAMENTO DE JOGADORES
+-- ====================================================================================================
+Players.PlayerAdded:Connect(CreateESP)
+Players.PlayerRemoving:Connect(RemoveESP)
+for _, p in pairs(Players:GetPlayers()) do if p ~= LocalPlayer then CreateESP(p) end end
+
+-- ====================================================================================================
+-- MOVEMENT SYSTEMS
+-- ====================================================================================================
+RunService.PreSimulation:Connect(function()
+    if GodMode.Movement.Bhop and LocalPlayer.Character then
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if hum and hum.MoveDirection.Magnitude > 0 and hum.FloorMaterial ~= Enum.Material.Air then 
+            hum:ChangeState(Enum.HumanoidStateType.Jumping) 
+        end
+    end
+    if GodMode.Movement.Noclip and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do 
+            if part:IsA("BasePart") then 
+                part.CanCollide = false 
+            end 
+        end
+    end
+end)
+
+UserInputService.JumpRequest:Connect(function() 
+    if GodMode.Movement.InfJump and LocalPlayer.Character then 
+        LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState("Jumping") 
+    end 
+end)
+
+-- Aimbot desativa ao soltar
+task.spawn(function()
+    while task.wait(0.1) do
+        if not GodMode.Combat.AutoAimbot then
+            GodMode.Combat.Active = false
+        end
+    end
+end)
+
+print("📱 GOD MODE HUB - MOBILE EDITION LOADED!")
+print("🎮 Touch-Optimized Interface Active")
+print("✨ Made by Rekirts & Ruqqs")
