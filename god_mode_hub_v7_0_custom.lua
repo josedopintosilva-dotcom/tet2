@@ -275,6 +275,7 @@ ScreenGui.Name = HttpService:GenerateGUID(false)
 ScreenGui.ResetOnSpawn = false
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 ScreenGui.IgnoreGuiInset = true
+ScreenGui.DisplayOrder = 999
 
 if syn and syn.protect_gui then
     syn.protect_gui(ScreenGui)
@@ -294,6 +295,8 @@ FloatingButton.BackgroundColor3 = Color3.fromRGB(15, 15, 25)
 FloatingButton.BorderSizePixel = 0
 FloatingButton.Text = ""
 FloatingButton.AutoButtonColor = false
+FloatingButton.Active = true
+FloatingButton.ZIndex = 100
 FloatingButton.Parent = ScreenGui
 
 local FloatCorner = Instance.new("UICorner")
@@ -325,7 +328,11 @@ FloatIcon.Text = "⚡"
 FloatIcon.TextSize = 32
 FloatIcon.TextColor3 = Color3.fromRGB(255, 255, 255)
 FloatIcon.Font = Enum.Font.GothamBold
+FloatIcon.ZIndex = 101
 FloatIcon.Parent = FloatingButton
+
+-- Tornar o ícone não clicável para não bloquear o botão
+FloatIcon.Active = false
 
 -- Frame Principal com novo estilo
 local MainFrame = Instance.new("Frame")
@@ -1154,10 +1161,29 @@ end)
 
 -- Abrir/Fechar Menu
 FloatingButton.MouseButton1Click:Connect(function()
+    print("Botão clicado!") -- Debug
     if MainFrame.Visible then
-        MainFrame:TweenSize(UDim2.new(0, 0, 0, 0), "Out", "Quad", 0.3, true, function() MainFrame.Visible = false end)
+        MainFrame:TweenSize(UDim2.new(0, 0, 0, 0), "Out", "Quad", 0.3, true, function() 
+            MainFrame.Visible = false 
+        end)
     else
         MainFrame.Visible = true
+        MainFrame.Size = UDim2.new(0, 0, 0, 0)
+        local targetSize = UserInputService.TouchEnabled and UDim2.new(0, 480, 0, 320) or UDim2.new(0, 550, 0, 380)
+        MainFrame:TweenSize(targetSize, "Out", "Back", 0.3, true)
+    end
+end)
+
+-- Também adicionar suporte para toque em mobile
+FloatingButton.TouchTap:Connect(function()
+    print("Toque detectado!") -- Debug
+    if MainFrame.Visible then
+        MainFrame:TweenSize(UDim2.new(0, 0, 0, 0), "Out", "Quad", 0.3, true, function() 
+            MainFrame.Visible = false 
+        end)
+    else
+        MainFrame.Visible = true
+        MainFrame.Size = UDim2.new(0, 0, 0, 0)
         local targetSize = UserInputService.TouchEnabled and UDim2.new(0, 480, 0, 320) or UDim2.new(0, 550, 0, 380)
         MainFrame:TweenSize(targetSize, "Out", "Back", 0.3, true)
     end
