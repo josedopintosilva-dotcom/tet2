@@ -1,0 +1,517 @@
+--// PARTE 1: CONFIGURAÇÕES E INTERFACE
+--// Colocar em StarterGui > ScreenGui > LocalScript
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Camera = workspace.CurrentCamera
+local LocalPlayer = Players.LocalPlayer
+
+--// CONFIGURAÇÕES
+local Settings = {
+    AimbotEnabled = false,
+    AutoFireEnabled = false,
+    AimbotSmoothness = 0.15,
+    AimbotFOV = 250,
+    MaxDistance = 2000,
+    TeamCheck = true,
+    WallCheck = true,
+    AutoFireDelay = 0.08,
+    TargetPart = "HumanoidRootPart",
+    ESPEnabled = true,
+    ESPDistance = 3000,
+    BoxEnabled = true,
+    SkeletonEnabled = true,
+    LineEnabled = true,
+    InfoEnabled = true,
+    HeadDotEnabled = true,
+    ColorVisible = Color3.fromRGB(0, 255, 100),
+    ColorBehindWall = Color3.fromRGB(255, 50, 50),
+    ColorTeam = Color3.fromRGB(0, 150, 255),
+    ShowFOVCircle = true
+}
+
+local CurrentTarget = nil
+local LastFireTime = 0
+local ESPObjects = {}
+
+--// CRIAR INTERFACE
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ESPSystemPro"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+ScreenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 320, 0, 450)
+MainFrame.Position = UDim2.new(0, 20, 0.5, -225)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.ClipsDescendants = true
+MainFrame.Parent = ScreenGui
+
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 16)
+UICorner.Parent = MainFrame
+
+-- Header
+local Header = Instance.new("Frame")
+Header.Size = UDim2.new(1, 0, 0, 60)
+Header.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+Header.BorderSizePixel = 0
+Header.Parent = MainFrame
+
+local HeaderCorner = Instance.new("UICorner")
+HeaderCorner.CornerRadius = UDim.new(0, 16)
+HeaderCorner.Parent = Header
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -120, 1, 0)
+Title.Position = UDim2.new(0, 20, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🔥 ESP & AIMBOT PRO"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 20
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Header
+
+-- Botões
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.new(0, 45, 0, 45)
+MinimizeBtn.Position = UDim2.new(1, -110, 0, 7.5)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+MinimizeBtn.Text = "−"
+MinimizeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeBtn.TextSize = 28
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = Header
+
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.new(0, 45, 0, 45)
+CloseBtn.Position = UDim2.new(1, -60, 0, 7.5)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+CloseBtn.Text = "×"
+CloseBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseBtn.TextSize = 30
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = Header
+
+--// PARTE 2: SISTEMA DE TOGGLES
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -20, 1, -80)
+ScrollFrame.Position = UDim2.new(0, 10, 0, 70)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 120)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 800)
+ScrollFrame.Parent = MainFrame
+
+-- Função criar toggle
+local function CreateToggle(name, settingKey, yPos, color)
+    local ToggleFrame = Instance.new("Frame")
+    ToggleFrame.Size = UDim2.new(1, -10, 0, 50)
+    ToggleFrame.Position = UDim2.new(0, 5, 0, yPos)
+    ToggleFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+    ToggleFrame.BorderSizePixel = 0
+    ToggleFrame.Parent = ScrollFrame
+    
+    local TCorner = Instance.new("UICorner")
+    TCorner.CornerRadius = UDim.new(0, 12)
+    TCorner.Parent = ToggleFrame
+    
+    local Label = Instance.new("TextLabel")
+    Label.Size = UDim2.new(0.55, 0, 1, 0)
+    Label.Position = UDim2.new(0, 15, 0, 0)
+    Label.BackgroundTransparency = 1
+    Label.Text = name
+    Label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Label.TextSize = 15
+    Label.Font = Enum.Font.GothamSemibold
+    Label.TextXAlignment = Enum.TextXAlignment.Left
+    Label.Parent = ToggleFrame
+    
+    local Status = Instance.new("TextLabel")
+    Status.Size = UDim2.new(0.3, 0, 0, 18)
+    Status.Position = UDim2.new(0, 15, 0.65, 0)
+    Status.BackgroundTransparency = 1
+    Status.Text = "OFF"
+    Status.TextColor3 = Color3.fromRGB(255, 80, 80)
+    Status.TextSize = 12
+    Status.Font = Enum.Font.Gotham
+    Status.TextXAlignment = Enum.TextXAlignment.Left
+    Status.Parent = ToggleFrame
+    
+    local ToggleBtn = Instance.new("TextButton")
+    ToggleBtn.Size = UDim2.new(0, 70, 0, 36)
+    ToggleBtn.Position = UDim2.new(1, -85, 0.5, -18)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 75)
+    ToggleBtn.Text = ""
+    ToggleBtn.AutoButtonColor = false
+    ToggleBtn.Parent = ToggleFrame
+    
+    local TBCorner = Instance.new("UICorner")
+    TBCorner.CornerRadius = UDim.new(1, 0)
+    TBCorner.Parent = ToggleBtn
+    
+    local Indicator = Instance.new("Frame")
+    Indicator.Size = UDim2.new(0, 28, 0, 28)
+    Indicator.Position = UDim2.new(0, 4, 0.5, -14)
+    Indicator.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+    Indicator.BorderSizePixel = 0
+    Indicator.Parent = ToggleBtn
+    
+    local IndCorner = Instance.new("UICorner")
+    IndCorner.CornerRadius = UDim.new(1, 0)
+    IndCorner.Parent = Indicator
+    
+    local function UpdateToggle()
+        local enabled = Settings[settingKey]
+        local targetPos = enabled and UDim2.new(1, -32, 0.5, -14) or UDim2.new(0, 4, 0.5, -14)
+        local targetColor = enabled and color or Color3.fromRGB(255, 80, 80)
+        
+        TweenService:Create(Indicator, TweenInfo.new(0.25), {
+            Position = targetPos,
+            BackgroundColor3 = targetColor
+        }):Play()
+        
+        Status.Text = enabled and "ON" or "OFF"
+        Status.TextColor3 = targetColor
+    end
+    
+    ToggleBtn.MouseButton1Click:Connect(function()
+        Settings[settingKey] = not Settings[settingKey]
+        UpdateToggle()
+    end)
+    
+    UpdateToggle()
+    return yPos + 58
+end
+
+-- Criar toggles
+local y = 0
+y = CreateToggle("🎯 Aimbot", "AimbotEnabled", y, Color3.fromRGB(0, 200, 255))
+y = CreateToggle("⚡ Auto Fire", "AutoFireEnabled", y, Color3.fromRGB(0, 255, 100))
+y = CreateToggle("🎯 FOV Circle", "ShowFOVCircle", y, Color3.fromRGB(200, 100, 255))
+y = y + 20
+y = CreateToggle("👁️ ESP Master", "ESPEnabled", y, Color3.fromRGB(255, 200, 0))
+y = CreateToggle("📦 Box ESP", "BoxEnabled", y, Color3.fromRGB(255, 100, 200))
+y = CreateToggle("🦴 Skeleton", "SkeletonEnabled", y, Color3.fromRGB(100, 255, 200))
+y = CreateToggle("📍 Tracer", "LineEnabled", y, Color3.fromRGB(200, 150, 255))
+y = CreateToggle("👤 Head Dot", "HeadDotEnabled", y, Color3.fromRGB(255, 255, 100))
+y = CreateToggle("ℹ️ Info", "InfoEnabled", y, Color3.fromRGB(150, 200, 255))
+
+--// PARTE 3: FUNÇÕES UNIVERSAIS E ESP
+
+-- Botão flutuante
+local FloatingBtn = Instance.new("TextButton")
+FloatingBtn.Size = UDim2.new(0, 70, 0, 70)
+FloatingBtn.Position = UDim2.new(1, -90, 0.5, -35)
+FloatingBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+FloatingBtn.Text = "🔥"
+FloatingBtn.TextSize = 35
+FloatingBtn.Font = Enum.Font.GothamBold
+FloatingBtn.Parent = ScreenGui
+
+local FloatCorner = Instance.new("UICorner")
+FloatCorner.CornerRadius = UDim.new(1, 0)
+FloatCorner.Parent = FloatingBtn
+
+FloatingBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- FOV Circle
+local FOVCircle = Instance.new("Frame")
+FOVCircle.Size = UDim2.new(0, Settings.AimbotFOV * 2, 0, Settings.AimbotFOV * 2)
+FOVCircle.Position = UDim2.new(0.5, -Settings.AimbotFOV, 0.5, -Settings.AimbotFOV)
+FOVCircle.BackgroundTransparency = 1
+FOVCircle.Visible = false
+FOVCircle.ZIndex = 10
+FOVCircle.Parent = ScreenGui
+
+local FOVImage = Instance.new("ImageLabel")
+FOVImage.Size = UDim2.new(1, 0, 1, 0)
+FOVImage.BackgroundTransparency = 1
+FOVImage.Image = "rbxassetid://266543268"
+FOVImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
+FOVImage.ImageTransparency = 0.6
+FOVImage.Parent = FOVCircle
+
+-- Funções utilitárias
+local function GetBodyPart(character, partName)
+    if not character then return nil end
+    local part = character:FindFirstChild(partName)
+    if part then return part end
+    if partName == "HumanoidRootPart" then
+        return character:FindFirstChild("Torso") 
+            or character:FindFirstChild("UpperTorso")
+            or character:FindFirstChild("LowerTorso")
+    end
+    for _, child in pairs(character:GetDescendants()) do
+        if child:IsA("BasePart") and child.Name:lower():find(partName:lower()) then
+            return child
+        end
+    end
+    return nil
+end
+
+local function IsEnemy(player)
+    if player == LocalPlayer then return false end
+    if not Settings.TeamCheck then return true end
+    if not player.Team or not LocalPlayer.Team then return true end
+    return player.Team ~= LocalPlayer.Team
+end
+
+local function IsVisible(targetPart)
+    if not Settings.WallCheck then return true end
+    local origin = Camera.CFrame.Position
+    local direction = targetPart.Position - origin
+    local rayParams = RaycastParams.new()
+    rayParams.FilterDescendantsInstances = {LocalPlayer.Character, targetPart.Parent}
+    rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+    local result = workspace:Raycast(origin, direction, rayParams)
+    return result == nil
+end
+
+local function GetAllCharacters()
+    local chars = {}
+    for _, player in pairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character then
+            local char = player.Character
+            local humanoid = char:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                table.insert(chars, {
+                    Player = player,
+                    Character = char,
+                    Humanoid = humanoid
+                })
+            end
+        end
+    end
+    return chars
+end
+
+local function WorldToScreen(position)
+    local screenPos, onScreen = Camera:WorldToViewportPoint(position)
+    return Vector2.new(screenPos.X, screenPos.Y), onScreen, screenPos.Z
+end
+
+--// PARTE 4: ESP VISUAL E AIMBOT LOOP
+
+-- Criar ESP
+local function CreateESP(charData)
+    local esp = {
+        Character = charData.Character,
+        Player = charData.Player,
+        Humanoid = charData.Humanoid,
+        Box = Instance.new("Frame"),
+        Tracer = Instance.new("Frame"),
+        HeadDot = Instance.new("Frame"),
+        InfoLabel = Instance.new("TextLabel"),
+        SkeletonLines = {}
+    }
+    
+    esp.Box.BackgroundTransparency = 1
+    esp.Box.BorderSizePixel = 2
+    esp.Box.Visible = false
+    esp.Box.ZIndex = 5
+    esp.Box.Parent = ScreenGui
+    
+    esp.Tracer.BackgroundColor3 = Color3.new(1, 1, 1)
+    esp.Tracer.BorderSizePixel = 0
+    esp.Tracer.Visible = false
+    esp.Tracer.ZIndex = 2
+    esp.Tracer.Parent = ScreenGui
+    
+    esp.HeadDot.BackgroundColor3 = Color3.new(1, 1, 1)
+    esp.HeadDot.BorderSizePixel = 0
+    esp.HeadDot.Visible = false
+    esp.HeadDot.ZIndex = 6
+    esp.HeadDot.Parent = ScreenGui
+    Instance.new("UICorner", esp.HeadDot).CornerRadius = UDim.new(1, 0)
+    
+    esp.InfoLabel.BackgroundTransparency = 1
+    esp.InfoLabel.TextColor3 = Color3.new(1, 1, 1)
+    esp.InfoLabel.TextSize = 12
+    esp.InfoLabel.Font = Enum.Font.GothamBold
+    esp.InfoLabel.Visible = false
+    esp.InfoLabel.ZIndex = 7
+    esp.InfoLabel.Parent = ScreenGui
+    
+    return esp
+end
+
+-- Atualizar ESP
+local function UpdateESP(esp)
+    if not esp.Character or not esp.Character.Parent then return false end
+    if not esp.Humanoid or esp.Humanoid.Health <= 0 then return false end
+    
+    local hrp = GetBodyPart(esp.Character, "HumanoidRootPart")
+    local head = GetBodyPart(esp.Character, "Head")
+    if not hrp or not head then return false end
+    
+    local hrpPos, onScreen, depth = WorldToScreen(hrp.Position)
+    if not onScreen or depth > Settings.ESPDistance then
+        esp.Box.Visible = false
+        esp.Tracer.Visible = false
+        esp.HeadDot.Visible = false
+        esp.InfoLabel.Visible = false
+        return true
+    end
+    
+    local distance = (hrp.Position - Camera.CFrame.Position).Magnitude
+    local height = math.clamp(1000 / distance, 20, 200)
+    local width = height * 0.6
+    
+    local isVisible = IsVisible(head)
+    local isEnemy = IsEnemy(esp.Player)
+    
+    local espColor = not isEnemy and Settings.ColorTeam or 
+                    (isVisible and Settings.ColorVisible or Settings.ColorBehindWall)
+    
+    -- Box
+    if Settings.BoxEnabled and Settings.ESPEnabled then
+        esp.Box.Visible = true
+        esp.Box.Size = UDim2.new(0, width, 0, height)
+        esp.Box.Position = UDim2.new(0, hrpPos.X - width/2, 0, hrpPos.Y - height/2)
+        esp.Box.BorderColor3 = espColor
+    else
+        esp.Box.Visible = false
+    end
+    
+    -- Tracer
+    if Settings.LineEnabled and Settings.ESPEnabled then
+        local origin = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+        local tracerDist = (origin - hrpPos).Magnitude
+        local angle = math.atan2(hrpPos.Y - origin.Y, hrpPos.X - origin.X)
+        
+        esp.Tracer.Visible = true
+        esp.Tracer.Size = UDim2.new(0, tracerDist, 0, 2)
+        esp.Tracer.Position = UDim2.new(0, origin.X, 0, origin.Y)
+        esp.Tracer.Rotation = math.deg(angle)
+        esp.Tracer.BackgroundColor3 = espColor
+    else
+        esp.Tracer.Visible = false
+    end
+    
+    -- Head Dot
+    if Settings.HeadDotEnabled and Settings.ESPEnabled then
+        local headPos = WorldToScreen(head.Position)
+        local dotSize = math.clamp(500 / distance, 4, 20)
+        esp.HeadDot.Visible = true
+        esp.HeadDot.Size = UDim2.new(0, dotSize, 0, dotSize)
+        esp.HeadDot.Position = UDim2.new(0, headPos.X - dotSize/2, 0, headPos.Y - dotSize/2)
+        esp.HeadDot.BackgroundColor3 = espColor
+    else
+        esp.HeadDot.Visible = false
+    end
+    
+    -- Info
+    if Settings.InfoEnabled and Settings.ESPEnabled then
+        esp.InfoLabel.Visible = true
+        esp.InfoLabel.Text = string.format("%s\n[%.0fm]\nHP: %.0f", 
+            esp.Player.Name, distance, esp.Humanoid.Health)
+        esp.InfoLabel.Position = UDim2.new(0, hrpPos.X + width/2 + 5, 0, hrpPos.Y - height/2)
+        esp.InfoLabel.TextColor3 = espColor
+        esp.InfoLabel.Size = UDim2.new(0, 150, 0, 60)
+    else
+        esp.InfoLabel.Visible = false
+    end
+    
+    return true
+end
+
+-- Auto Fire
+local function AutoFire()
+    if not Settings.AutoFireEnabled or not CurrentTarget then return end
+    if tick() - LastFireTime < Settings.AutoFireDelay then return end
+    
+    pcall(function()
+        local VirtualInputManager = game:GetService("VirtualInputManager")
+        local pos = UserInputService:GetMouseLocation()
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, true, game, 0)
+        task.wait(0.05)
+        VirtualInputManager:SendMouseButtonEvent(pos.X, pos.Y, 0, false, game, 0)
+    end)
+    
+    LastFireTime = tick()
+end
+
+-- Main Loop
+RunService.RenderStepped:Connect(function()
+    FOVCircle.Visible = Settings.AimbotEnabled and Settings.ShowFOVCircle
+    FOVCircle.Size = UDim2.new(0, Settings.AimbotFOV * 2, 0, Settings.AimbotFOV * 2)
+    FOVCircle.Position = UDim2.new(0.5, -Settings.AimbotFOV, 0.5, -Settings.AimbotFOV)
+    
+    local allChars = GetAllCharacters()
+    local activeChars = {}
+    
+    for _, charData in pairs(allChars) do
+        local id = charData.Player.UserId
+        activeChars[id] = true
+        
+        if not ESPObjects[id] then
+            ESPObjects[id] = CreateESP(charData)
+        end
+        
+        if not UpdateESP(ESPObjects[id]) then
+            ESPObjects[id] = nil
+        end
+    end
+    
+    for id, esp in pairs(ESPObjects) do
+        if not activeChars[id] then
+            esp.Box:Destroy()
+            esp.Tracer:Destroy()
+            esp.HeadDot:Destroy()
+            esp.InfoLabel:Destroy()
+            ESPObjects[id] = nil
+        end
+    end
+    
+    -- Aimbot
+    CurrentTarget = nil
+    if Settings.AimbotEnabled then
+        local bestTarget = nil
+        local bestDist = Settings.AimbotFOV
+        
+        for _, charData in pairs(allChars) do
+            if not IsEnemy(charData.Player) then continue end
+            
+            local targetPart = GetBodyPart(charData.Character, Settings.TargetPart)
+            if not targetPart then continue end
+            
+            local pos, onScreen = WorldToScreen(targetPart.Position)
+            if not onScreen then continue end
+            
+            local dist3D = (targetPart.Position - Camera.CFrame.Position).Magnitude
+            if dist3D > Settings.MaxDistance then continue end
+            
+            local screenCenter = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2)
+            local screenDist = (Vector2.new(pos.X, pos.Y) - screenCenter).Magnitude
+            
+            if screenDist < Settings.AimbotFOV and IsVisible(targetPart) and screenDist < bestDist then
+                bestDist = screenDist
+                bestTarget = targetPart
+            end
+        end
+        
+        CurrentTarget = bestTarget
+        if CurrentTarget then
+            local targetCF = CFrame.new(Camera.CFrame.Position, CurrentTarget.Position)
+            Camera.CFrame = Camera.CFrame:Lerp(targetCF, 1 - Settings.AimbotSmoothness)
+        end
+    end
+    
+    if Settings.AutoFireEnabled then
+        AutoFire()
+    end
+end)
+
+print("✅ ESP & Aimbot Pro carregado!")
+
+
+
